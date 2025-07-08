@@ -1,0 +1,39 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kzh/stitch-server
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+config:
+  server:
+    port: "50051"
+  database:
+    url: "postgres://user:password@host:5432/dbname"
+  twitch:
+    clientId: ""
+    clientSecret: ""
+    webhookUrl: ""
+  webhook:
+    secret: ""
+    port: "50052"
+    url: ""
+  discord:
+    token: ""
+    channel: ""
+
+# Ingress configuration
+ingress:
+  enabled: false            # Set to true to create an Ingress resource
+  className: ""            # Specify the ingressClassName (e.g., "nginx"). Empty string uses the cluster default.
+  host: ""                # Optional host name for the ingress rule
+  annotations: {}
+
+# Service configuration
+service:
+  annotations: {}
+
+# Logging configuration
+# Controls the RUST_LOG environment variable inside the server container.
+# Example: "info,sqlx=info" or "debug"
+logLevel: "info,sqlx=info"

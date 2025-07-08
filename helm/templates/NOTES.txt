@@ -1,0 +1,17 @@
+The server has been installed.
+To get the service details:
+
+```bash
+kubectl get svc {{ include "stitch.fullname" . }}
+```
+
+To port-forward the gRPC service (default port is 50051):
+
+```bash
+kubectl port-forward svc/{{ include "stitch.fullname" . }} {{ .Values.config.server.port }}:{{ .Values.config.server.port }}
+```
+
+3. Your gRPC server will be available at:
+  localhost:{{ .Values.config.server.port }}
+
+# PostgreSQL is not managed by this chart. Please ensure your database is available and the connection string is set in values.yaml.

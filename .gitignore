@@ -1,0 +1,5 @@
+/target
+**/*.env
+/.vscode
+justfile
+**/.DS_Store

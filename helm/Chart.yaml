@@ -1,0 +1,15 @@
+apiVersion: v2
+name: stitch
+description: A Helm chart for Stitch gRPC Server
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - stitch
+  - grpc
+  - stream
+  - twitch
+home: https://github.com/kzh/stitch
+sources:
+  - https://github.com/kzh/stitch
+dependencies: []

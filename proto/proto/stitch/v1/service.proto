@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package stitch.v1;
+
+message Channel {
+  int32 id = 1;
+  string name = 2;
+}
+
+message TrackChannelRequest {
+  string name = 1;
+}
+
+message TrackChannelResponse {}
+
+message UntrackChannelRequest {
+  string name = 1;
+}
+
+message UntrackChannelResponse {}
+
+message ListChannelsRequest {}
+
+message ListChannelsResponse {
+  repeated Channel channels = 1;
+}
+
+service StitchService {
+  rpc TrackChannel(TrackChannelRequest) returns (TrackChannelResponse);
+  rpc UntrackChannel(UntrackChannelRequest) returns (UntrackChannelResponse);
+  rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
+}
