@@ -498,9 +498,10 @@ impl TwitchWebhook {
             event.broadcaster_user_name
         );
 
-        let guard = self.streams.get(&event.broadcaster_user_id).ok_or(
-            WebhookError::InternalServerError("Stream not found".to_string()),
-        )?;
+        let guard = match self.streams.get(&event.broadcaster_user_id) {
+            Some(guard) => guard,
+            None => return Ok(()),
+        };
         let mut stream = guard.lock().await;
         stream.title = event.title.clone();
         stream.category = event.category_name.clone();
