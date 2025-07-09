@@ -371,7 +371,10 @@ impl TwitchWebhook {
                 .message_discord(
                     CreateMessage::new().embed(
                         CreateEmbed::new()
-                            .title(format!("**{}** is live!", &channel.display_name))
+                            .title(format!(
+                                "**{}** is live!",
+                                display_name(&channel.display_name, &channel.login)
+                            ))
                             .description(&stream.title)
                             .thumbnail(&channel.profile_image_url)
                             .color(colour::Color::from_rgb(145, 70, 255))
@@ -475,7 +478,11 @@ impl TwitchWebhook {
 
         let builder = EditMessage::new().embed(
             CreateEmbed::new()
-                .title(format!("**{}** streamed for {}", stream.user_name, elapsed))
+                .title(format!(
+                    "**{}** streamed for {}",
+                    display_name(&stream.user_name, &stream.user_login),
+                    elapsed
+                ))
                 .description(title)
                 .thumbnail(stream.profile_image_url.clone())
                 .color(colour::Color::from_rgb(128, 128, 128))
@@ -522,7 +529,10 @@ impl TwitchWebhook {
 
         let builder = EditMessage::new().embed(
             CreateEmbed::new()
-                .title(format!("**{}** is live!", stream.user_name))
+                .title(format!(
+                    "**{}** is live!",
+                    display_name(&stream.user_name, &stream.user_login)
+                ))
                 .description(&event.title)
                 .thumbnail(&stream.profile_image_url)
                 .color(colour::Color::from_rgb(145, 70, 255))
@@ -599,6 +609,14 @@ async fn handle_message(
             Ok(StatusCode::NO_CONTENT.into_response())
         }
         unknown_type => Err(WebhookError::UnknownMessageType(unknown_type.to_string())),
+    }
+}
+
+fn display_name(user_name: &str, user_login: &str) -> String {
+    if user_name.to_lowercase() == user_login {
+        user_name.to_string()
+    } else {
+        format!("{} ({})", user_name, user_login)
     }
 }
 
