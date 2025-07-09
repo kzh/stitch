@@ -363,7 +363,7 @@ impl TwitchWebhook {
             (channel, stream)
         };
 
-        if self.streams.contains_key(&stream.id) {
+        if self.streams.contains_key(&channel.id) {
             return Ok(());
         }
 
