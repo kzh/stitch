@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dashmap::DashMap;
+use dashmap::{DashMap, Entry, OccupiedEntry, VacantEntry};
 use tokio::time;
 
 pub struct TtlSet {
@@ -25,24 +25,19 @@ impl TtlSet {
         TtlSet { map, janitor }
     }
 
-    pub fn insert(&self, key: String, ttl: tokio::time::Duration) {
-        let expiration = tokio::time::Instant::now() + ttl;
-        self.map.insert(key, expiration);
-    }
-
-    pub fn contains(&self, key: &str) -> bool {
+    pub fn insert(&self, key: &str, ttl: tokio::time::Duration) -> bool {
         let now = time::Instant::now();
 
-        if let Some(exp) = self.map.get(key) {
-            let is_fresh = *exp > now;
-            drop(exp);
-            if !is_fresh {
-                self.map.remove(key);
+        let entry = self.map.entry(key.to_string());
+        if let Entry::Occupied(entry) = &entry {
+            let is_fresh = *entry.get() > now;
+            if is_fresh {
+                return false;
             }
-            return is_fresh;
         }
 
-        false
+        entry.insert(now + ttl);
+        true
     }
 }
 

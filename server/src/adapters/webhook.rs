@@ -30,7 +30,7 @@ const SIGNATURE_PREFIX: &str = "sha256=";
 const WEBHOOK_VERIFICATION_TYPE: &str = "webhook_callback_verification";
 const NOTIFICATION_TYPE: &str = "notification";
 const MAX_TIMESTAMP_AGE_SECONDS: u64 = 600;
-const MAX_FUTURE_TIMESTAMP_SECONDS: u64 = 60;
+const MAX_FUTURE_TIMESTAMP_SECONDS: u64 = 180;
 
 const HEADER_SIGNATURE: &str = "Twitch-Eventsub-Message-Signature";
 const HEADER_TIMESTAMP: &str = "Twitch-Eventsub-Message-Timestamp";
@@ -245,16 +245,15 @@ impl TwitchWebhook {
     fn verify(&self, headers: &HeaderMap, body: &[u8]) -> Result<DateTime<Utc>> {
         let (raw_signature, timestamp_str, message_id) = self.signature_headers(headers)?;
 
-        if self.recent_messages.contains(message_id) {
+        if !self
+            .recent_messages
+            .insert(message_id, tokio::time::Duration::from_secs(10 * 60))
+        {
             return Err(WebhookError::VerificationFailed(format!(
                 "Duplicate message ID: {}",
                 message_id
             )));
         }
-        self.recent_messages.insert(
-            message_id.to_string(),
-            tokio::time::Duration::from_secs(10 * 60),
-        );
 
         let timestamp = DateTime::parse_from_rfc3339(timestamp_str)
             .map_err(|e| {
