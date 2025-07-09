@@ -404,7 +404,7 @@ impl TwitchWebhook {
                     vec![db::UpdateEvent {
                         title: stream.title.clone(),
                         category: stream.game_name.clone(),
-                        timestamp: stream.started_at,
+                        timestamp: timestamp,
                     }]
                 },
                 message_id,
@@ -420,7 +420,7 @@ impl TwitchWebhook {
                 &stream.title,
                 &stream.game_name,
                 message_id as u64,
-                timestamp,
+                stream.started_at,
             )
             .await?;
         }
@@ -452,7 +452,7 @@ impl TwitchWebhook {
         });
         events.sort_by_key(|e| e.timestamp);
 
-        let mut last_event = stream.started_at;
+        let mut last_event = stream.events.first().unwrap().timestamp;
         let mut titles = HashMap::new();
         let mut categories = HashMap::new();
         for event in events {
