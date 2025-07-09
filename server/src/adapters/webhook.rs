@@ -251,6 +251,10 @@ impl TwitchWebhook {
                 message_id
             )));
         }
+        self.recent_messages.insert(
+            message_id.to_string(),
+            tokio::time::Duration::from_secs(10 * 60),
+        );
 
         let timestamp = DateTime::parse_from_rfc3339(timestamp_str)
             .map_err(|e| {
