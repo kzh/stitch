@@ -11,6 +11,8 @@ const TWITCH_HELIX_USERS_URL: &str = "https://api.twitch.tv/helix/users";
 const TWITCH_HELIX_STREAMS_URL: &str = "https://api.twitch.tv/helix/streams";
 const TWITCH_EVENTSUB_URL: &str = "https://api.twitch.tv/helix/eventsub/subscriptions";
 
+const STREAM_FETCH_RETRY_DELAY_SECS: u64 = 5;
+
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_owned()
@@ -188,20 +190,37 @@ impl TwitchAPI {
     }
 
     #[instrument(skip(self))]
-    pub async fn get_stream(&self, user_id: &str) -> anyhow::Result<TwitchStream> {
-        let resp: StreamsResponse = self
-            .send_json(
-                self.authenticated_request(reqwest::Method::GET, TWITCH_HELIX_STREAMS_URL)
-                    .query(&[("user_id", user_id)]),
-                "fetch stream by user_id",
-            )
-            .await?;
-
-        Ok(resp
-            .data
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("No stream found for user_id: {}", user_id))?)
+    pub async fn get_stream(&self, user_id: &str, retry: i32) -> anyhow::Result<TwitchStream> {
+        for attempt in 0..retry {
+            match self
+                .send_json::<StreamsResponse>(
+                    self.authenticated_request(reqwest::Method::GET, TWITCH_HELIX_STREAMS_URL)
+                        .query(&[("user_id", user_id)]),
+                    "fetch stream by user_id",
+                )
+                .await
+            {
+                Ok(resp) => {
+                    return Ok(resp.data.into_iter().next().ok_or_else(|| {
+                        anyhow::anyhow!("No stream found for user_id: {}", user_id)
+                    })?)
+                }
+                Err(e) => {
+                    info!(
+                        "Attempt {}/{}: Failed to fetch stream for user_id {}: {:?}",
+                        attempt + 1,
+                        retry,
+                        user_id,
+                        e
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_secs(
+                        (attempt as u64 + 1) * STREAM_FETCH_RETRY_DELAY_SECS,
+                    ))
+                    .await;
+                }
+            }
+        }
+        anyhow::bail!("Failed to fetch stream after {} retries", retry);
     }
 
     #[instrument(skip(self))]

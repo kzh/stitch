@@ -37,7 +37,8 @@ const HEADER_TIMESTAMP: &str = "Twitch-Eventsub-Message-Timestamp";
 const HEADER_MESSAGE_ID: &str = "Twitch-Eventsub-Message-Id";
 const HEADER_MESSAGE_TYPE: &str = "Twitch-Eventsub-Message-Type";
 
-const CONCURRENCY_LIMIT: usize = 20;
+const STREAM_FETCH_RETRIES: i32 = 3;
+const CONCURRENCY_LIMIT: usize = 40;
 
 #[derive(thiserror::Error, Debug)]
 pub enum WebhookError {
@@ -213,7 +214,7 @@ impl TwitchWebhook {
             .for_each_concurrent(CONCURRENCY_LIMIT, |stream| async move {
                 let _ = self
                     .handle_stream_online(
-                        &stream.user_id,
+                        stream.user_id.clone(),
                         Some(stream.clone()),
                         stored_ref.get(&stream.id),
                         stream.started_at,
@@ -309,7 +310,11 @@ impl TwitchWebhook {
         Ok(payload.challenge)
     }
 
-    async fn handle_notification(&self, body: &Bytes, timestamp: DateTime<Utc>) -> Result<()> {
+    async fn handle_notification(
+        self: &Arc<Self>,
+        body: &Bytes,
+        timestamp: DateTime<Utc>,
+    ) -> Result<()> {
         #[derive(Deserialize, Debug)]
         struct Kind {
             subscription: Subscription,
@@ -324,8 +329,16 @@ impl TwitchWebhook {
         match subscription.kind.as_str() {
             "stream.online" => {
                 let Notification { event } = json::<Notification<OnlineEvent>>(body)?;
-                self.handle_stream_online(&event.broadcaster_user_id, None, None, timestamp)
-                    .await?;
+                let webhook = Arc::clone(self);
+                let user_id = event.broadcaster_user_id.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = webhook
+                        .handle_stream_online(user_id, None, None, timestamp)
+                        .await
+                    {
+                        error!("Error handling stream online: {e:?}");
+                    }
+                });
             }
             "stream.offline" => {
                 let Notification { event } = json::<Notification<OfflineEvent>>(body)?;
@@ -344,22 +357,23 @@ impl TwitchWebhook {
 
     pub(crate) async fn handle_stream_online(
         &self,
-        user_id: &str,
+        user_id: String,
         stream: Option<TwitchStream>,
         preload: Option<&db::Stream>,
         timestamp: DateTime<Utc>,
     ) -> Result<()> {
-        let (channel, stream) = if let Some(stream) = stream {
-            let channel = self.api.get_channel(user_id).await.map_err(|e| {
-                WebhookError::InternalServerError(format!("Twitch API error: {:#}", e))
-            })?;
-            (channel, stream)
-        } else {
-            let (channel, stream) =
-                try_join!(self.api.get_channel(user_id), self.api.get_stream(user_id)).map_err(
-                    |e| WebhookError::InternalServerError(format!("Twitch API error: {:#}", e)),
-                )?;
-            (channel, stream)
+        let (channel, stream) = match stream {
+            Some(stream) => (
+                self.api.get_channel(&user_id).await.map_err(|e| {
+                    WebhookError::InternalServerError(format!("Twitch API error: {:#}", e))
+                })?,
+                stream,
+            ),
+            None => try_join!(
+                self.api.get_channel(&user_id),
+                self.api.get_stream(&user_id, STREAM_FETCH_RETRIES)
+            )
+            .map_err(|e| WebhookError::InternalServerError(format!("Twitch API error: {:#}", e)))?,
         };
 
         if self.streams.contains_key(&channel.id) {
