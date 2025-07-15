@@ -461,6 +461,10 @@ impl TwitchWebhook {
         };
 
         let stream = guard.1.lock().await;
+        if stream.events.is_empty() {
+            warn!("{}'s stream has no events", stream.user_name);
+            return Ok(());
+        }
         let mut events = stream.events.clone();
         events.push(db::UpdateEvent {
             title: stream.title.clone(),
@@ -469,26 +473,7 @@ impl TwitchWebhook {
         });
         events.sort_by_key(|e| e.timestamp);
 
-        let mut last_event = stream.events.first().unwrap().timestamp;
-        let mut titles = HashMap::new();
-        let mut categories = HashMap::new();
-        for event in events {
-            let elapsed = event
-                .timestamp
-                .signed_duration_since(last_event)
-                .num_seconds();
-            last_event = event.timestamp;
-            titles
-                .entry(event.title.clone())
-                .and_modify(|count| *count += elapsed)
-                .or_insert(elapsed);
-            categories
-                .entry(event.category.clone())
-                .and_modify(|count| *count += elapsed)
-                .or_insert(elapsed);
-        }
-
-        let title = titles.iter().max_by_key(|(_, count)| *count).unwrap().0;
+        let (title, categories) = tally_categories(&events);
         let category = categories.iter().max_by_key(|(_, count)| *count).unwrap().0;
 
         let elapsed = human_duration(stream.started_at, timestamp);
@@ -500,11 +485,11 @@ impl TwitchWebhook {
                     display_name(&stream.user_name, &stream.user_login),
                     elapsed
                 ))
-                .description(title)
+                .description(title.to_string())
                 .thumbnail(stream.profile_image_url.clone())
                 .color(colour::Color::from_rgb(128, 128, 128))
                 .url(format!("https://twitch.tv/{}", stream.user_login))
-                .field(format!("**»** {}", &category), "", true),
+                .field(format!("**»** {}", category), "", true),
         );
         self.edit_discord(stream.message_id, builder).await?;
 
@@ -644,4 +629,142 @@ fn human_duration(start: DateTime<Utc>, end: DateTime<Utc>) -> String {
     }
     let (hours, mins) = (minutes / 60, minutes % 60);
     format!("{hours}h{mins:02}m")
+}
+
+fn tally_categories(events: &[db::UpdateEvent]) -> (&str, HashMap<&str, u64>) {
+    let mut titles: HashMap<&str, u64> = HashMap::new();
+    let mut categories: HashMap<&str, u64> = HashMap::new();
+
+    for window in events.windows(2) {
+        let (prev, curr) = (&window[0], &window[1]);
+        let elapsed = curr
+            .timestamp
+            .signed_duration_since(prev.timestamp)
+            .num_seconds() as u64;
+        *titles.entry(&prev.title).or_insert(0) += elapsed;
+        *categories.entry(&prev.category).or_insert(0) += elapsed;
+    }
+
+    let title = titles.iter().max_by_key(|(_, count)| *count).unwrap().0;
+    (title, categories)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn test_tally_categories() {
+        let base_time = Utc.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap();
+        
+        // Test 1: Single title and category
+        let events = vec![
+            db::UpdateEvent {
+                title: "Stream Title".to_string(),
+                category: "Gaming".to_string(),
+                timestamp: base_time,
+            },
+            db::UpdateEvent {
+                title: "Stream Title".to_string(),
+                category: "Gaming".to_string(),
+                timestamp: base_time + chrono::Duration::hours(1),
+            },
+        ];
+        let (title, categories) = tally_categories(&events);
+        assert_eq!(title, "Stream Title");
+        assert_eq!(categories.get("Gaming"), Some(&3600)); // 1 hour
+
+        // Test 2: Multiple titles, single category
+        let events = vec![
+            db::UpdateEvent {
+                title: "Initial Title".to_string(),
+                category: "Gaming".to_string(),
+                timestamp: base_time,
+            },
+            db::UpdateEvent {
+                title: "Initial Title".to_string(),
+                category: "Gaming".to_string(),
+                timestamp: base_time + chrono::Duration::hours(1),
+            },
+            db::UpdateEvent {
+                title: "Changed Title".to_string(),
+                category: "Gaming".to_string(),
+                timestamp: base_time + chrono::Duration::hours(4),
+            },
+            db::UpdateEvent {
+                title: "Final Title".to_string(),
+                category: "Gaming".to_string(),
+                timestamp: base_time + chrono::Duration::hours(4) + chrono::Duration::minutes(30),
+            },
+        ];
+        let (title, categories) = tally_categories(&events);
+        assert_eq!(title, "Initial Title"); // 4 hours vs 30 minutes
+        assert_eq!(categories.get("Gaming"), Some(&16200)); // 4.5 hours total
+
+        // Test 3: Multiple categories
+        let events = vec![
+            db::UpdateEvent {
+                title: "Playing Minecraft".to_string(),
+                category: "Minecraft".to_string(),
+                timestamp: base_time,
+            },
+            db::UpdateEvent {
+                title: "Still Playing".to_string(),
+                category: "Minecraft".to_string(),
+                timestamp: base_time + chrono::Duration::hours(1) + chrono::Duration::minutes(30),
+            },
+            db::UpdateEvent {
+                title: "Just Chatting".to_string(),
+                category: "Just Chatting".to_string(),
+                timestamp: base_time + chrono::Duration::hours(4),
+            },
+            db::UpdateEvent {
+                title: "Playing Fortnite".to_string(),
+                category: "Fortnite".to_string(),
+                timestamp: base_time + chrono::Duration::hours(4) + chrono::Duration::minutes(15),
+            },
+        ];
+        let (title, categories) = tally_categories(&events);
+        assert_eq!(title, "Still Playing"); // 2.5 hours
+        assert_eq!(categories.get("Minecraft"), Some(&14400)); // 4 hours
+        assert_eq!(categories.get("Just Chatting"), Some(&900)); // 15 minutes
+        assert_eq!(categories.get("Fortnite"), None); // No duration for last event
+
+        // Test 4: Equal durations
+        let events = vec![
+            db::UpdateEvent {
+                title: "Title A".to_string(),
+                category: "Category A".to_string(),
+                timestamp: base_time,
+            },
+            db::UpdateEvent {
+                title: "Title B".to_string(),
+                category: "Category B".to_string(),
+                timestamp: base_time + chrono::Duration::hours(1),
+            },
+            db::UpdateEvent {
+                title: "Title C".to_string(),
+                category: "Category C".to_string(),
+                timestamp: base_time + chrono::Duration::hours(2),
+            },
+        ];
+        let (title, categories) = tally_categories(&events);
+        assert!(title == "Title A" || title == "Title B"); // Both 1 hour
+        assert_eq!(categories.get("Category A"), Some(&3600));
+        assert_eq!(categories.get("Category B"), Some(&3600));
+        assert_eq!(categories.get("Category C"), None);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_tally_categories_insufficient_events() {
+        let base_time = Utc.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap();
+        let events = vec![db::UpdateEvent {
+            title: "Only Title".to_string(),
+            category: "Only Category".to_string(),
+            timestamp: base_time,
+        }];
+        let _ = tally_categories(&events);
+    }
 }
