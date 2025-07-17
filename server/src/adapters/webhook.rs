@@ -369,11 +369,24 @@ impl TwitchWebhook {
                 })?,
                 stream,
             ),
-            None => try_join!(
-                self.api.get_channel(&user_id),
-                self.api.get_stream(&user_id, STREAM_FETCH_RETRIES)
-            )
-            .map_err(|e| WebhookError::InternalServerError(format!("Twitch API error: {:#}", e)))?,
+            None => {
+                let results = tokio::join!(
+                    self.api.get_channel(&user_id),
+                    self.api.get_stream(&user_id, STREAM_FETCH_RETRIES)
+                );
+                let (channel, stream) = match results {
+                    (Err(e), _) => {
+                        return Err(WebhookError::InternalServerError(format!(
+                            "Twitch API error: {:#}",
+                            e
+                        )));
+                    }
+                    (_, Err(_)) => return Ok(()),
+                    (Ok(channel), Ok(stream)) => (channel, stream),
+                };
+
+                (channel, stream)
+            }
         };
 
         if self.streams.contains_key(&channel.id) {
@@ -657,7 +670,7 @@ mod tests {
     #[test]
     fn test_tally_categories() {
         let base_time = Utc.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap();
-        
+
         // Test 1: Single title and category
         let events = vec![
             db::UpdateEvent {

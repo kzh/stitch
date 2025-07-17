@@ -205,14 +205,7 @@ impl TwitchAPI {
                         anyhow::anyhow!("No stream found for user_id: {}", user_id)
                     })?)
                 }
-                Err(e) => {
-                    info!(
-                        "Attempt {}/{}: Failed to fetch stream for user_id {}: {:?}",
-                        attempt + 1,
-                        retry,
-                        user_id,
-                        e
-                    );
+                Err(_) => {
                     tokio::time::sleep(tokio::time::Duration::from_secs(
                         (attempt as u64 + 1) * STREAM_FETCH_RETRY_DELAY_SECS,
                     ))
