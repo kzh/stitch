@@ -2,6 +2,7 @@ use anyhow::Context;
 use serenity::all::ChannelId;
 use serenity::http::Http as DiscordHttp;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use tonic::transport::Server;
 use tracing::{error, info};
 
@@ -52,16 +53,18 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     );
 
     let discord_http = Arc::new(DiscordHttp::new(&discord_token));
-    let webhook = TwitchWebhook::new(
-        webhook_secret,
-        webhook_port,
-        Arc::clone(&api),
-        pool.clone(),
-        discord_http,
-        ChannelId::new(discord_channel),
-    )
-    .await
-    .context("Failed to initialize Twitch webhook")?;
+    let webhook = Arc::new(
+        TwitchWebhook::new(
+            webhook_secret,
+            webhook_port,
+            Arc::clone(&api),
+            pool.clone(),
+            discord_http,
+            ChannelId::new(discord_channel),
+        )
+        .await
+        .context("Failed to initialize Twitch webhook")?,
+    );
 
     let addr_string = format!("0.0.0.0:{}", port);
     let addr = addr_string
@@ -73,31 +76,46 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     )));
     info!("Stitch gRPC server listening: {}", addr);
 
-    let shutdown = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
-        info!("Ctrl+C received, initiating shutdown...");
-    };
-
+    let cancel = shutdown_token();
     tokio::select! {
-        result = grpc.serve(addr) => {
+        result = {
+            let tok = cancel.clone();
+            grpc.serve_with_shutdown(addr, tok.cancelled_owned())
+        } => {
             if let Err(e) = result {
                 error!(error = ?e, "gRPC server encountered an error");
                 return Err(e.into());
             }
             info!("gRPC server shut down.");
         }
-        result = webhook.serve() => {
+        result = {
+            let tok = cancel.clone();
+            webhook.serve(tok.cancelled_owned())
+        } => {
             match result {
                 Ok(()) => info!("Webhook server shut down cleanly."),
                 Err(e) => error!(error = ?e, "Webhook server encountered an error during its operation."),
             }
         }
-        _ = shutdown => {
-            info!("Shutdown signal received. Servers are terminating.");
-        }
     }
 
     Ok(())
+}
+
+fn shutdown_token() -> CancellationToken {
+    let token = CancellationToken::new();
+    let cancel = token.clone();
+    tokio::spawn(async move {
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install TERM signal handler");
+        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+            .expect("Failed to install SIGINT signal handler");
+
+        tokio::select! {
+            _ = sigterm.recv() => (),
+            _ = sigint.recv() => (),
+        }
+        cancel.cancel();
+    });
+    token
 }

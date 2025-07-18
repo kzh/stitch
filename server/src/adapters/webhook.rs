@@ -21,9 +21,9 @@ use serenity::{
     model::{colour, id::ChannelId},
 };
 use sha2::Sha256;
-use std::collections::hash_map::RandomState;
+use std::{collections::hash_map::RandomState, future::Future};
 use std::{collections::HashMap, sync::Arc};
-use tokio::{sync::Mutex, try_join};
+use tokio::sync::Mutex;
 use tracing::{error, info, instrument, warn};
 
 const SIGNATURE_PREFIX: &str = "sha256=";
@@ -157,6 +157,8 @@ pub struct TwitchWebhook {
     recent_messages: ttl_set::TtlSet,
     streams: DashMap<String, Arc<Mutex<Stream>>>,
 
+    tasks: Mutex<tokio::task::JoinSet<()>>,
+
     discord_http: Arc<DiscordHttp>,
     discord_channel: ChannelId,
 }
@@ -177,6 +179,7 @@ impl TwitchWebhook {
             pool,
             recent_messages: ttl_set::TtlSet::new(),
             streams: DashMap::new(),
+            tasks: Mutex::new(tokio::task::JoinSet::new()),
             discord_http,
             discord_channel,
         };
@@ -331,14 +334,17 @@ impl TwitchWebhook {
                 let Notification { event } = json::<Notification<OnlineEvent>>(body)?;
                 let webhook = Arc::clone(self);
                 let user_id = event.broadcaster_user_id.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = webhook
-                        .handle_stream_online(user_id, None, None, timestamp)
-                        .await
-                    {
-                        error!("Error handling stream online: {e:?}");
-                    }
-                });
+                {
+                    let mut tasks = self.tasks.lock().await;
+                    tasks.spawn(async move {
+                        if let Err(e) = webhook
+                            .handle_stream_online(user_id, None, None, timestamp)
+                            .await
+                        {
+                            error!("Error handling stream online: {e:?}");
+                        }
+                    });
+                }
             }
             "stream.offline" => {
                 let Notification { event } = json::<Notification<OfflineEvent>>(body)?;
@@ -591,17 +597,26 @@ impl TwitchWebhook {
             })
     }
 
-    pub(crate) async fn serve(self) -> anyhow::Result<()> {
+    pub(crate) async fn serve<F>(self: Arc<Self>, shutdown: F) -> anyhow::Result<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
         let port = self.port;
         let app = Router::new()
             .route("/webhook/twitch", routing::post(handle_message))
-            .with_state(Arc::new(self));
+            .with_state(Arc::clone(&self));
 
         let listener =
             tokio::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
 
         info!("Stitch webhook server listening: 0.0.0.0:{}", port);
-        axum::serve(listener, app.into_make_service()).await?;
+        axum::serve(listener, app.into_make_service())
+            .with_graceful_shutdown(shutdown)
+            .await?;
+        let mut tasks = self.tasks.lock().await;
+        while let Some(result) = tasks.join_next().await {
+            result.unwrap_or_else(|e| error!("Task failed: {e:?}"));
+        }
         Ok(())
     }
 }

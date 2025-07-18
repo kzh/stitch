@@ -38,3 +38,4 @@ tonic = { workspace = true }
 serenity = { version = "0.12.3", features = ["client"] }
 futures = "0.3.31"
 thiserror = "2.0.12"
+tokio-util = "0.7.15"
