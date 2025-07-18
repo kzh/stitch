@@ -94,7 +94,7 @@ pub type Result<T> = std::result::Result<T, WebhookError>;
 
 fn json<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<T> {
     serde_json::from_slice(body)
-        .map_err(|e| WebhookError::BadPayload(format!("JSON parse error: {}", e)))
+        .map_err(|e| WebhookError::BadPayload(format!("JSON parse error: {e}")))
 }
 
 #[derive(Deserialize, Debug)]
@@ -210,7 +210,7 @@ impl TwitchWebhook {
                     .collect::<Vec<_>>(),
             )
             .await
-            .map_err(|e| WebhookError::InternalServerError(format!("Twitch API error: {:#}", e)))?;
+            .map_err(|e| WebhookError::InternalServerError(format!("Twitch API error: {e:#}")))?;
 
         let stored_ref = &stored;
         stream::iter(streams)
@@ -254,8 +254,7 @@ impl TwitchWebhook {
             .insert(message_id, tokio::time::Duration::from_secs(10 * 60))
         {
             return Err(WebhookError::VerificationFailed(format!(
-                "Duplicate message ID: {}",
-                message_id
+                "Duplicate message ID: {message_id}"
             )));
         }
 
@@ -263,7 +262,7 @@ impl TwitchWebhook {
             .map_err(|e| {
                 WebhookError::InvalidHeaderValue(
                     HEADER_TIMESTAMP,
-                    format!("Invalid timestamp: {}", e),
+                    format!("Invalid timestamp: {e}"),
                 )
             })?
             .with_timezone(&Utc);
@@ -284,7 +283,7 @@ impl TwitchWebhook {
         }
 
         let mut mac: Hmac<Sha256> = hmac::digest::KeyInit::new_from_slice(self.key.as_ref())
-            .map_err(|e| WebhookError::InternalServerError(format!("HMAC error: {}", e)))?;
+            .map_err(|e| WebhookError::InternalServerError(format!("HMAC error: {e}")))?;
 
         let mut body_with_headers =
             Vec::with_capacity(message_id.len() + timestamp_str.len() + body.len());
@@ -302,7 +301,7 @@ impl TwitchWebhook {
                 })?;
 
         let received_sig_bytes = hex::decode(signature_to_verify)
-            .map_err(|e| WebhookError::VerificationFailed(format!("Invalid hex: {}", e)))?;
+            .map_err(|e| WebhookError::VerificationFailed(format!("Invalid hex: {e}")))?;
         mac.verify_slice(&received_sig_bytes)
             .map_err(|_| WebhookError::VerificationFailed("Signature mismatch".into()))?;
         Ok(timestamp)
@@ -371,7 +370,7 @@ impl TwitchWebhook {
         let (channel, stream) = match stream {
             Some(stream) => (
                 self.api.get_channel(&user_id).await.map_err(|e| {
-                    WebhookError::InternalServerError(format!("Twitch API error: {:#}", e))
+                    WebhookError::InternalServerError(format!("Twitch API error: {e:#}"))
                 })?,
                 stream,
             ),
@@ -383,8 +382,7 @@ impl TwitchWebhook {
                 let (channel, stream) = match results {
                     (Err(e), _) => {
                         return Err(WebhookError::InternalServerError(format!(
-                            "Twitch API error: {:#}",
-                            e
+                            "Twitch API error: {e:#}"
                         )));
                     }
                     (_, Err(_)) => return Ok(()),
@@ -440,7 +438,7 @@ impl TwitchWebhook {
                     vec![db::UpdateEvent {
                         title: stream.title.clone(),
                         category: stream.game_name.clone(),
-                        timestamp: timestamp,
+                        timestamp,
                     }]
                 },
                 message_id,
@@ -508,11 +506,11 @@ impl TwitchWebhook {
                 .thumbnail(stream.profile_image_url.clone())
                 .color(colour::Color::from_rgb(128, 128, 128))
                 .url(format!("https://twitch.tv/{}", stream.user_login))
-                .field(format!("**»** {}", category), "", true),
+                .field(format!("**»** {category}"), "", true),
         );
         self.edit_discord(stream.message_id, builder).await?;
 
-        db::end_stream(&self.pool, &stream.id, &title, timestamp).await?;
+        db::end_stream(&self.pool, &stream.id, title, timestamp).await?;
         Ok(())
     }
 
@@ -544,7 +542,7 @@ impl TwitchWebhook {
             &self.pool,
             &stream.id,
             &stream.title,
-            &stream.events.last().unwrap(),
+            stream.events.last().unwrap(),
         )
         .await?;
 
@@ -574,8 +572,7 @@ impl TwitchWebhook {
             .await
             .map_err(|e| {
                 WebhookError::InternalServerError(format!(
-                    "Failed to send message to Discord channel: {}",
-                    e
+                    "Failed to send message to Discord channel: {e}"
                 ))
             })
     }
@@ -593,7 +590,7 @@ impl TwitchWebhook {
             )
             .await
             .map_err(|e| {
-                WebhookError::InternalServerError(format!("Failed to edit message: {}", e))
+                WebhookError::InternalServerError(format!("Failed to edit message: {e}"))
             })
     }
 
@@ -646,7 +643,7 @@ fn display_name(user_name: &str, user_login: &str) -> String {
     if user_name.to_lowercase() == user_login {
         user_name.to_string()
     } else {
-        format!("{} ({})", user_name, user_login)
+        format!("{user_name} ({user_login})")
     }
 }
 

@@ -66,10 +66,10 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
         .context("Failed to initialize Twitch webhook")?,
     );
 
-    let addr_string = format!("0.0.0.0:{}", port);
+    let addr_string: String = format!("0.0.0.0:{port}");
     let addr = addr_string
         .parse()
-        .with_context(|| format!("Invalid server address: {}", addr_string))?;
+        .with_context(|| format!("Invalid server address: {addr_string}"))?;
 
     let grpc = Server::builder().add_service(StitchServiceServer::new(StitchGRPC::new(
         crate::service::channel::ChannelService::new(pool.clone(), service_channels_map, api),

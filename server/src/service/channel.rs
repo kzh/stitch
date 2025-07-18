@@ -37,17 +37,17 @@ impl ChannelService {
             .twitch_api
             .get_channel_by_name(&name)
             .await
-            .map_err(|e| Status::internal(format!("get_channel_id failed: {}", e)))?;
+            .map_err(|e| Status::internal(format!("get_channel_id failed: {e}")))?;
         let db_channel = db_track(&self.pool, &name, &channel.display_name, &channel.id)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "db_track failed");
-                Status::internal(format!("db_track failed: {:#}", e))
+                Status::internal(format!("db_track failed: {e:#}"))
             })?;
         self.twitch_api
             .subscribe(&channel.id)
             .await
-            .map_err(|e| Status::internal(format!("subscribe failed: {}", e)))?;
+            .map_err(|e| Status::internal(format!("subscribe failed: {e}")))?;
         self.channels.insert(name.clone(), channel.id);
         Ok(ProtoChannel {
             id: db_channel.id,
@@ -64,17 +64,17 @@ impl ChannelService {
             .twitch_api
             .get_channel_by_name(&name)
             .await
-            .map_err(|e| Status::internal(format!("get_channel failed: {}", e)))?;
+            .map_err(|e| Status::internal(format!("get_channel failed: {e}")))?;
         db_untrack(&self.pool, &name)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "db_untrack failed");
-                Status::internal(format!("db_untrack failed: {:#}", e))
+                Status::internal(format!("db_untrack failed: {e:#}"))
             })?;
         self.twitch_api
             .unsubscribe(&channel.id)
             .await
-            .map_err(|e| Status::internal(format!("unsubscribe failed: {}", e)))?;
+            .map_err(|e| Status::internal(format!("unsubscribe failed: {e}")))?;
         self.channels.remove(&name);
         Ok(())
     }
@@ -83,7 +83,7 @@ impl ChannelService {
     pub async fn list_channels(&self) -> Result<Vec<ProtoChannel>, Status> {
         let db_channels = db_list(&self.pool)
             .await
-            .map_err(|e| Status::internal(format!("db_list failed: {}", e)))?;
+            .map_err(|e| Status::internal(format!("db_list failed: {e}")))?;
         Ok(db_channels
             .into_iter()
             .map(|c| ProtoChannel {

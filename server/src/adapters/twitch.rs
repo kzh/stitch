@@ -182,11 +182,11 @@ impl TwitchAPI {
             )
             .await?;
 
-        Ok(resp
+        resp
             .data
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("No user found for id: {}", user_id))?)
+            .ok_or_else(|| anyhow::anyhow!("No user found for id: {}", user_id))
     }
 
     #[instrument(skip(self))]
@@ -201,9 +201,9 @@ impl TwitchAPI {
                 .await
             {
                 Ok(resp) => {
-                    return Ok(resp.data.into_iter().next().ok_or_else(|| {
+                    return resp.data.into_iter().next().ok_or_else(|| {
                         anyhow::anyhow!("No stream found for user_id: {}", user_id)
-                    })?)
+                    })
                 }
                 Err(_) => {
                     tokio::time::sleep(tokio::time::Duration::from_secs(
@@ -243,11 +243,11 @@ impl TwitchAPI {
             )
             .await?;
 
-        Ok(resp
+        resp
             .data
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("No user found for username: {}", username))?)
+            .ok_or_else(|| anyhow::anyhow!("No user found for username: {}", username))
     }
 
     #[instrument(skip(self))]

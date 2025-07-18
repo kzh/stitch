@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dashmap::{DashMap, Entry, OccupiedEntry, VacantEntry};
+use dashmap::{DashMap, Entry};
 use tokio::time;
 
 pub struct TtlSet {

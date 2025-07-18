@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -11,7 +9,7 @@ pub(crate) async fn establish_pool(database_url: &str) -> Result<Pool> {
     let pool = PgPoolOptions::new()
         .connect(database_url)
         .await
-        .with_context(|| format!("connecting to database `{}`", database_url))?;
+        .with_context(|| format!("connecting to database `{database_url}`"))?;
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
@@ -41,7 +39,7 @@ pub(crate) async fn track_channel(
     .bind(now)
     .fetch_one(pool)
     .await
-    .with_context(|| format!("tracking channel `{}`", channel))?;
+    .with_context(|| format!("tracking channel `{channel}`"))?;
     Ok(channel)
 }
 
@@ -54,7 +52,7 @@ pub(crate) async fn untrack_channel(pool: &Pool, channel: &str) -> Result<()> {
     .bind(channel)
     .execute(pool)
     .await
-    .with_context(|| format!("untracking channel `{}`", channel))?;
+    .with_context(|| format!("untracking channel `{channel}`"))?;
     Ok(())
 }
 
@@ -90,7 +88,7 @@ pub(crate) async fn get_channel_by_name(pool: &Pool, name: &str) -> Result<Chann
     .bind(name)
     .fetch_one(pool)
     .await
-    .with_context(|| format!("getting channel by name `{}`", name))?;
+    .with_context(|| format!("getting channel by name `{name}`"))?;
     Ok(channel)
 }
 
@@ -122,7 +120,7 @@ pub(crate) async fn start_stream(
     }]))
     .execute(pool)
     .await
-    .with_context(|| format!("starting stream `{}`", stream_id))?;
+    .with_context(|| format!("starting stream `{stream_id}`"))?;
     Ok(())
 }
 
@@ -144,7 +142,7 @@ pub(crate) async fn update_stream(
     .bind(stream_id)
     .execute(pool)
     .await
-    .with_context(|| format!("updating stream `{}`", stream_id))?;
+    .with_context(|| format!("updating stream `{stream_id}`"))?;
     Ok(())
 }
 
@@ -166,7 +164,7 @@ pub(crate) async fn end_stream(
     .bind(stream_id)
     .execute(pool)
     .await
-    .with_context(|| format!("ending stream `{}`", stream_id))?;
+    .with_context(|| format!("ending stream `{stream_id}`"))?;
     Ok(())
 }
 
