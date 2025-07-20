@@ -187,6 +187,19 @@ impl TwitchWebhook {
         Ok(webhook)
     }
 
+    pub async fn track_channel(&self, user_id: &str) -> Result<()> {
+        if let Ok(stream) = self.api.get_stream(user_id, 0).await {
+            self.handle_stream_online(
+                user_id.to_string(),
+                Some(stream.clone()),
+                None,
+                stream.started_at,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     #[instrument(skip(self))]
     async fn load_streams(&self) -> Result<()> {
         let channels = db::list_channels(&self.pool).await?;

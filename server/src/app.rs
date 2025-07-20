@@ -72,7 +72,12 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
         .with_context(|| format!("Invalid server address: {addr_string}"))?;
 
     let grpc = Server::builder().add_service(StitchServiceServer::new(StitchGRPC::new(
-        crate::service::channel::ChannelService::new(pool.clone(), service_channels_map, api),
+        crate::service::channel::ChannelService::new(
+            pool.clone(),
+            service_channels_map,
+            Arc::clone(&webhook),
+            api,
+        ),
     )));
     info!("Stitch gRPC server listening: {}", addr);
 

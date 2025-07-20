@@ -230,7 +230,7 @@ impl TwitchAPI {
 
     #[instrument(skip(self))]
     pub async fn get_stream(&self, user_id: &str, retry: i32) -> anyhow::Result<TwitchStream> {
-        for attempt in 0..retry {
+        for attempt in 0..=retry {
             match self
                 .send_json::<StreamsResponse>(
                     self.authenticated_request(reqwest::Method::GET, TWITCH_HELIX_STREAMS_URL)

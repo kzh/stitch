@@ -2,6 +2,7 @@ use crate::adapters::db::{
     list_channels as db_list, track_channel as db_track, untrack_channel as db_untrack, Pool,
 };
 use crate::adapters::twitch::TwitchAPI;
+use crate::adapters::webhook::TwitchWebhook;
 use dashmap::DashMap;
 use proto::stitch::Channel as ProtoChannel;
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use tracing::instrument;
 pub struct ChannelService {
     pool: Pool,
     channels: Arc<DashMap<String, String>>,
+    webhook: Arc<TwitchWebhook>,
     twitch_api: Arc<TwitchAPI>,
 }
 
@@ -19,11 +21,13 @@ impl ChannelService {
     pub fn new(
         pool: Pool,
         channels: Arc<DashMap<String, String>>,
+        webhook: Arc<TwitchWebhook>,
         twitch_api: Arc<TwitchAPI>,
     ) -> Self {
         Self {
             pool,
             channels,
+            webhook,
             twitch_api,
         }
     }
@@ -44,6 +48,10 @@ impl ChannelService {
                 tracing::error!(error = %e, "db_track failed");
                 Status::internal(format!("db_track failed: {e:#}"))
             })?;
+        self.webhook
+            .track_channel(&channel.id)
+            .await
+            .map_err(|e| Status::internal(format!("track_channel failed: {e:#}")))?;
         self.twitch_api
             .subscribe_channel(&channel.id)
             .await
@@ -65,12 +73,10 @@ impl ChannelService {
             .get_channel_by_name(&name)
             .await
             .map_err(|e| Status::internal(format!("get_channel failed: {e}")))?;
-        db_untrack(&self.pool, &name)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "db_untrack failed");
-                Status::internal(format!("db_untrack failed: {e:#}"))
-            })?;
+        db_untrack(&self.pool, &name).await.map_err(|e| {
+            tracing::error!(error = %e, "db_untrack failed");
+            Status::internal(format!("db_untrack failed: {e:#}"))
+        })?;
         self.twitch_api
             .unsubscribe(&channel.id)
             .await
