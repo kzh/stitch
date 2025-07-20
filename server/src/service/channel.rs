@@ -49,7 +49,7 @@ impl ChannelService {
                 Status::internal(format!("db_track failed: {e:#}"))
             })?;
         self.webhook
-            .track_channel(&channel.id)
+            .track_channel(&channel.id, db_channel.clone())
             .await
             .map_err(|e| Status::internal(format!("track_channel failed: {e:#}")))?;
         self.twitch_api

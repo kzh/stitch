@@ -59,6 +59,7 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
             webhook_port,
             Arc::clone(&api),
             pool.clone(),
+            channels.clone(),
             discord_http,
             ChannelId::new(discord_channel),
         )

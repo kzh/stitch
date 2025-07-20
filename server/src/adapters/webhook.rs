@@ -9,7 +9,7 @@ use axum::{
     routing, Router,
 };
 use chrono::{DateTime, Utc};
-use dashmap::DashMap;
+use dashmap::{DashMap, Entry};
 use futures::stream::{self, StreamExt};
 use hex;
 use hmac::{digest::Key, Hmac, Mac};
@@ -159,6 +159,8 @@ pub struct TwitchWebhook {
 
     tasks: Mutex<tokio::task::JoinSet<()>>,
 
+    channels: DashMap<String, db::Channel>,
+
     discord_http: Arc<DiscordHttp>,
     discord_channel: ChannelId,
 }
@@ -169,6 +171,7 @@ impl TwitchWebhook {
         port: u16,
         api: Arc<super::twitch::TwitchAPI>,
         pool: sqlx::PgPool,
+        channels: Vec<db::Channel>,
         discord_http: Arc<DiscordHttp>,
         discord_channel: ChannelId,
     ) -> Result<Self> {
@@ -180,6 +183,7 @@ impl TwitchWebhook {
             recent_messages: ttl_set::TtlSet::new(),
             streams: DashMap::new(),
             tasks: Mutex::new(tokio::task::JoinSet::new()),
+            channels: DashMap::from_iter(channels.into_iter().map(|c| (c.channel_id.clone(), c))),
             discord_http,
             discord_channel,
         };
@@ -187,7 +191,7 @@ impl TwitchWebhook {
         Ok(webhook)
     }
 
-    pub async fn track_channel(&self, user_id: &str) -> Result<()> {
+    pub async fn track_channel(&self, user_id: &str, channel: db::Channel) -> Result<()> {
         if let Ok(stream) = self.api.get_stream(user_id, 0).await {
             self.handle_stream_online(
                 user_id.to_string(),
@@ -197,6 +201,7 @@ impl TwitchWebhook {
             )
             .await?;
         }
+        self.channels.insert(channel.channel_id.clone(), channel);
         Ok(())
     }
 
@@ -408,6 +413,27 @@ impl TwitchWebhook {
 
         if self.streams.contains_key(&channel.id) {
             return Ok(());
+        }
+
+        {
+            let entry = self.channels.entry(channel.id.clone());
+            match entry {
+                Entry::Occupied(mut occ) => {
+                    let stored = occ.get_mut();
+                    if channel.login != stored.name || channel.display_name != stored.display_name {
+                        stored.name = channel.login.clone();
+                        stored.display_name = channel.display_name.clone();
+                        db::update_channel(
+                            &self.pool,
+                            &stored.channel_id,
+                            &stored.name,
+                            &stored.display_name,
+                        )
+                        .await?;
+                    }
+                }
+                Entry::Vacant(_) => return Ok(()),
+            }
         }
 
         info!("Stream online received for user: {}", channel.display_name);

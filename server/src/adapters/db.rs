@@ -56,7 +56,7 @@ pub(crate) async fn untrack_channel(pool: &Pool, channel: &str) -> Result<()> {
     Ok(())
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(sqlx::FromRow, Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct Channel {
     pub id: i32,
     pub name: String,
@@ -90,6 +90,26 @@ pub(crate) async fn get_channel_by_name(pool: &Pool, name: &str) -> Result<Chann
     .await
     .with_context(|| format!("getting channel by name `{name}`"))?;
     Ok(channel)
+}
+
+pub(crate) async fn update_channel(
+    pool: &Pool,
+    channel_id: &str,
+    name: &str,
+    display_name: &str,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE channels SET name = $1, display_name = $2 WHERE channel_id = $3
+        "#,
+    )
+    .bind(name)
+    .bind(display_name)
+    .bind(channel_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("updating channel `{channel_id}`"))?;
+    Ok(())
 }
 
 pub(crate) async fn start_stream(
