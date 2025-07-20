@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use futures::future::try_join_all;
@@ -73,8 +75,14 @@ pub struct Subscription {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct Pagination {
+    pub cursor: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct SubscriptionResponse {
     pub data: Vec<Subscription>,
+    pub pagination: Pagination,
 }
 
 #[instrument(skip_all)]
@@ -150,25 +158,57 @@ impl TwitchAPI {
     }
 
     pub async fn sync(&self, channels: &[String]) -> anyhow::Result<()> {
-        let subscriptions = self.get_subscriptions(None).await?;
-        println!("Current Subscriptions: {:?}", &subscriptions);
+        let (subs, stale): (Vec<Subscription>, Vec<Subscription>) = self
+            .get_subscriptions(None)
+            .await?
+            .into_iter()
+            .partition(|sub| sub.status == "enabled");
+        futures::future::join_all(stale.iter().map(|sub| self.unsubscribe(&sub.id))).await;
 
-        // for subscription in &subscriptions.data {
-        //     if let Some(_) = channels.get(&subscription.condition.broadcaster_user_id) {
-        //         info!(
-        //             "Channel {} is already tracked, skipping subscription.",
-        //             subscription.condition.broadcaster_user_id
-        //         );
-        //         continue;
-        //     }
+        let have: HashMap<(&str, &str), &str> = subs
+            .iter()
+            .map(|e| {
+                (
+                    (e.condition.broadcaster_user_id.as_str(), e.kind.as_str()),
+                    e.id.as_str(),
+                )
+            })
+            .collect();
+        let want: HashSet<(&str, &str)> = channels
+            .iter()
+            .flat_map(|c| {
+                [
+                    (c.as_str(), "stream.online"),
+                    (c.as_str(), "channel.update"),
+                    (c.as_str(), "stream.offline"),
+                ]
+            })
+            .collect();
 
-        //     info!(
-        //         "Unsubscribing from channel {} with id {}",
-        //         subscription.condition.broadcaster_user_id, subscription.id
-        //     );
-        //     let _ = self.unsubscribe(&subscription.id).await;
-        // }
+        let add = want
+            .iter()
+            .filter(|e| !have.contains_key(e))
+            .collect::<Vec<_>>();
+        futures::future::join_all(
+            add.iter()
+                .map(|(channel, event)| self.subscribe(event, channel)),
+        )
+        .await;
 
+        let remove = have
+            .iter()
+            .filter(|e| !want.contains(e.0))
+            .map(|e| e.1)
+            .collect::<Vec<_>>();
+        futures::future::join_all(remove.iter().map(|id| self.unsubscribe(id))).await;
+
+        info!(
+            "Twitch webhooks synchronized for {} channels: {} added, {} removed, {} kept",
+            channels.len(),
+            add.len(),
+            remove.len(),
+            have.len() - remove.len()
+        );
         Ok(())
     }
 
@@ -182,8 +222,7 @@ impl TwitchAPI {
             )
             .await?;
 
-        resp
-            .data
+        resp.data
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No user found for id: {}", user_id))
@@ -201,9 +240,11 @@ impl TwitchAPI {
                 .await
             {
                 Ok(resp) => {
-                    return resp.data.into_iter().next().ok_or_else(|| {
-                        anyhow::anyhow!("No stream found for user_id: {}", user_id)
-                    })
+                    return resp
+                        .data
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("No stream found for user_id: {}", user_id))
                 }
                 Err(_) => {
                     tokio::time::sleep(tokio::time::Duration::from_secs(
@@ -243,42 +284,42 @@ impl TwitchAPI {
             )
             .await?;
 
-        resp
-            .data
+        resp.data
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No user found for username: {}", username))
     }
 
     #[instrument(skip(self))]
-    pub async fn subscribe(&self, user_id: &str) -> anyhow::Result<()> {
-        async fn make_req(api: &TwitchAPI, event: &str, user_id: &str) -> anyhow::Result<Value> {
-            let payload = serde_json::json!({
-                "type": event,
-                "version": "1",
-                "condition": { "broadcaster_user_id": user_id },
-                "transport": {
-                    "method":   "webhook",
-                    "callback": format!("https://{}/webhook/twitch", &api.webhook_url),
-                    "secret":   &api.webhook_secret,
-                },
-            });
+    pub async fn subscribe(&self, event: &str, user_id: &str) -> anyhow::Result<Value> {
+        let payload = serde_json::json!({
+            "type": event,
+            "version": "1",
+            "condition": { "broadcaster_user_id": user_id },
+            "transport": {
+                "method":   "webhook",
+                "callback": format!("https://{}/webhook/twitch", &self.webhook_url),
+                "secret":   &self.webhook_secret,
+            },
+        });
 
-            let resp: Value = api
-                .send_json(
-                    api.authenticated_request(reqwest::Method::POST, TWITCH_EVENTSUB_URL)
-                        .header("Content-Type", "application/json")
-                        .json(&payload),
-                    "create subscription",
-                )
-                .await?;
-            Ok(resp)
-        }
+        let resp: Value = self
+            .send_json(
+                self.authenticated_request(reqwest::Method::POST, TWITCH_EVENTSUB_URL)
+                    .header("Content-Type", "application/json")
+                    .json(&payload),
+                "create subscription",
+            )
+            .await?;
+        Ok(resp)
+    }
 
+    #[instrument(skip(self))]
+    pub async fn subscribe_channel(&self, user_id: &str) -> anyhow::Result<()> {
         futures::try_join!(
-            make_req(self, "stream.online", user_id),
-            make_req(self, "channel.update", user_id),
-            make_req(self, "stream.offline", user_id),
+            self.subscribe("stream.online", user_id),
+            self.subscribe("channel.update", user_id),
+            self.subscribe("stream.offline", user_id),
         )?;
 
         info!("Subscription created for user_id: {}", user_id);
@@ -286,28 +327,28 @@ impl TwitchAPI {
     }
 
     #[instrument(skip(self))]
-    pub async fn unsubscribe(&self, user_id: &str) -> anyhow::Result<()> {
-        let subscriptions = self.get_subscriptions(Some(user_id)).await?;
-        if subscriptions.data.is_empty() {
-            return Ok(());
-        }
+    pub async fn unsubscribe(&self, subscription_id: &str) -> anyhow::Result<()> {
+        self.authenticated_request(reqwest::Method::DELETE, TWITCH_EVENTSUB_URL)
+            .query(&[("id", subscription_id)])
+            .send()
+            .await
+            .context("Failed to send unsubscribe request")?
+            .error_for_status()
+            .context("Twitch returned non‑2xx response while unsubscribing")?;
+        Ok(())
+    }
 
-        async fn make_req(api: &TwitchAPI, subscription_id: &str) -> anyhow::Result<()> {
-            api.authenticated_request(reqwest::Method::DELETE, TWITCH_EVENTSUB_URL)
-                .query(&[("id", subscription_id)])
-                .send()
-                .await
-                .context("Failed to send unsubscribe request")?
-                .error_for_status()
-                .context("Twitch returned non‑2xx response while unsubscribing")?;
-            Ok(())
+    #[instrument(skip(self))]
+    pub async fn unsubscribe_channel(&self, user_id: &str) -> anyhow::Result<()> {
+        let subscriptions = self.get_subscriptions(Some(user_id)).await?;
+        if subscriptions.is_empty() {
+            return Ok(());
         }
 
         let responses = try_join_all(
             subscriptions
-                .data
                 .iter()
-                .map(|subscription| make_req(self, &subscription.id)),
+                .map(|subscription| self.unsubscribe(&subscription.id)),
         )
         .await?;
 
@@ -319,12 +360,26 @@ impl TwitchAPI {
     pub async fn get_subscriptions(
         &self,
         channel: Option<&str>,
-    ) -> anyhow::Result<SubscriptionResponse> {
-        let mut request = self.authenticated_request(reqwest::Method::GET, TWITCH_EVENTSUB_URL);
-        if let Some(channel) = channel {
-            request = request.query(&[("user_id", channel)]);
-        }
+    ) -> anyhow::Result<Vec<Subscription>> {
+        let mut subscriptions = Vec::new();
+        let mut next: Option<String> = None;
+        loop {
+            let mut request = self.authenticated_request(reqwest::Method::GET, TWITCH_EVENTSUB_URL);
+            if let Some(channel) = channel {
+                request = request.query(&[("user_id", channel)]);
+            }
+            if let Some(ref cursor) = next {
+                request = request.query(&[("after", cursor.as_str())]);
+            }
 
-        self.send_json(request, "fetch subscriptions").await
+            let resp: SubscriptionResponse = self.send_json(request, "fetch subscriptions").await?;
+            subscriptions.extend(resp.data);
+            if let Some(cursor) = resp.pagination.cursor {
+                next = Some(cursor);
+            } else {
+                break;
+            }
+        }
+        Ok(subscriptions)
     }
 }

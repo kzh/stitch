@@ -589,12 +589,14 @@ impl TwitchWebhook {
                 message,
             )
             .await
-            .map_err(|e| {
-                WebhookError::InternalServerError(format!("Failed to edit message: {e}"))
-            })
+            .map_err(|e| WebhookError::InternalServerError(format!("Failed to edit message: {e}")))
     }
 
-    pub(crate) async fn serve<F>(self: Arc<Self>, shutdown: F) -> anyhow::Result<()>
+    pub(crate) async fn serve<F>(
+        self: Arc<Self>,
+        shutdown: F,
+        channels: Vec<db::Channel>,
+    ) -> anyhow::Result<()>
     where
         F: Future<Output = ()> + Send + 'static,
     {
@@ -605,6 +607,15 @@ impl TwitchWebhook {
 
         let listener =
             tokio::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
+
+        self.api
+            .sync(
+                &channels
+                    .iter()
+                    .map(|c| c.channel_id.clone())
+                    .collect::<Vec<String>>(),
+            )
+            .await?;
 
         info!("Stitch webhook server listening: 0.0.0.0:{}", port);
         axum::serve(listener, app.into_make_service())

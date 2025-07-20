@@ -36,8 +36,8 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
 
     let service_channels_map = Arc::new(
         channels
-            .into_iter()
-            .map(|c| (c.name, c.channel_id))
+            .iter()
+            .map(|c| (c.name.clone(), c.channel_id.clone()))
             .collect::<dashmap::DashMap<String, String>>(),
     );
 
@@ -90,7 +90,7 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
         }
         result = {
             let tok = cancel.clone();
-            webhook.serve(tok.cancelled_owned())
+            webhook.serve(tok.cancelled_owned(), channels)
         } => {
             match result {
                 Ok(()) => info!("Webhook server shut down cleanly."),

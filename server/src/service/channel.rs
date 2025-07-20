@@ -45,7 +45,7 @@ impl ChannelService {
                 Status::internal(format!("db_track failed: {e:#}"))
             })?;
         self.twitch_api
-            .subscribe(&channel.id)
+            .subscribe_channel(&channel.id)
             .await
             .map_err(|e| Status::internal(format!("subscribe failed: {e}")))?;
         self.channels.insert(name.clone(), channel.id);
