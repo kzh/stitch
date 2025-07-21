@@ -191,7 +191,8 @@ impl TwitchWebhook {
         Ok(webhook)
     }
 
-    pub async fn track_channel(&self, user_id: &str, channel: db::Channel) -> Result<()> {
+    pub(crate) async fn track_channel(&self, user_id: &str, channel: db::Channel) -> Result<()> {
+        self.channels.insert(channel.channel_id.clone(), channel);
         if let Ok(stream) = self.api.get_stream(user_id, 0).await {
             self.handle_stream_online(
                 user_id.to_string(),
@@ -201,7 +202,6 @@ impl TwitchWebhook {
             )
             .await?;
         }
-        self.channels.insert(channel.channel_id.clone(), channel);
         Ok(())
     }
 
