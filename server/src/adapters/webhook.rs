@@ -205,6 +205,16 @@ impl TwitchWebhook {
         Ok(())
     }
 
+    pub(crate) async fn untrack_channel(&self, channel_id: &str) -> Result<()> {
+        self.channels.remove(channel_id);
+        if let Some((_, stream)) = self.streams.remove(channel_id) {
+            let stream = stream.lock().await;
+            self.delete_discord(stream.message_id).await?;
+            db::delete_stream(&self.pool, &stream.id).await?;
+        }
+        Ok(())
+    }
+
     #[instrument(skip(self))]
     async fn load_streams(&self) -> Result<()> {
         let channels = db::list_channels(&self.pool).await?;
@@ -629,6 +639,16 @@ impl TwitchWebhook {
             )
             .await
             .map_err(|e| WebhookError::InternalServerError(format!("Failed to edit message: {e}")))
+    }
+
+    pub(crate) async fn delete_discord(&self, message_id: i64) -> Result<()> {
+        self.discord_channel
+            .delete_message(&self.discord_http, MessageId::from(message_id as u64))
+            .await
+            .map_err(|e| {
+                WebhookError::InternalServerError(format!("Failed to delete message: {e}"))
+            })?;
+        Ok(())
     }
 
     pub(crate) async fn serve<F>(

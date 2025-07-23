@@ -28,8 +28,8 @@ pub(crate) async fn track_channel(
         r#"
         INSERT INTO channels (name, display_name, channel_id, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
-        RETURNING id, name, display_name, channel_id, created_at, updated_at
+        ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at, active = true
+        RETURNING id, name, display_name, channel_id, active, created_at, updated_at
         "#,
     )
     .bind(channel)
@@ -46,7 +46,7 @@ pub(crate) async fn track_channel(
 pub(crate) async fn untrack_channel(pool: &Pool, channel: &str) -> Result<()> {
     sqlx::query(
         r#"
-        DELETE FROM channels WHERE name = $1
+        UPDATE channels SET active = false WHERE name = $1
         "#,
     )
     .bind(channel)
@@ -62,6 +62,7 @@ pub(crate) struct Channel {
     pub name: String,
     pub display_name: String,
     pub channel_id: String,
+    pub active: bool,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }
@@ -69,7 +70,7 @@ pub(crate) struct Channel {
 pub(crate) async fn list_channels(pool: &Pool) -> Result<Vec<Channel>> {
     let channels = sqlx::query_as::<_, Channel>(
         r#"
-        SELECT id, name, display_name, channel_id, created_at, updated_at FROM channels
+        SELECT id, name, display_name, channel_id, active, created_at, updated_at FROM channels WHERE active = true
         "#,
     )
     .fetch_all(pool)
@@ -81,7 +82,7 @@ pub(crate) async fn list_channels(pool: &Pool) -> Result<Vec<Channel>> {
 pub(crate) async fn get_channel_by_name(pool: &Pool, name: &str) -> Result<Channel> {
     let channel = sqlx::query_as::<_, Channel>(
         r#"
-        SELECT id, name, display_name, channel_id, created_at, updated_at
+        SELECT id, name, display_name, channel_id, active, created_at, updated_at
           FROM channels WHERE name = $1
         "#,
     )
@@ -185,6 +186,19 @@ pub(crate) async fn end_stream(
     .execute(pool)
     .await
     .with_context(|| format!("ending stream `{stream_id}`"))?;
+    Ok(())
+}
+
+pub(crate) async fn delete_stream(pool: &Pool, stream_id: &str) -> Result<()> {
+    sqlx::query(
+        r#"
+        DELETE FROM streams WHERE stream_id = $1
+        "#,
+    )
+    .bind(stream_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("deleting stream `{stream_id}`"))?;
     Ok(())
 }
 

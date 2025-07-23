@@ -73,14 +73,22 @@ impl ChannelService {
             .get_channel_by_name(&name)
             .await
             .map_err(|e| Status::internal(format!("get_channel failed: {e}")))?;
+        if let Err(e) = self
+            .twitch_api
+            .unsubscribe_channel(&channel.id)
+            .await
+            .map_err(|e| Status::internal(format!("unsubscribe failed: {e}")))
+        {
+            tracing::warn!("Failed to unsubscribe from Twitch: {e}");
+        }
+        self.webhook
+            .untrack_channel(&channel.id)
+            .await
+            .map_err(|e| Status::internal(format!("untrack_channel failed: {e}")))?;
         db_untrack(&self.pool, &name).await.map_err(|e| {
             tracing::error!(error = %e, "db_untrack failed");
             Status::internal(format!("db_untrack failed: {e:#}"))
         })?;
-        self.twitch_api
-            .unsubscribe(&channel.id)
-            .await
-            .map_err(|e| Status::internal(format!("unsubscribe failed: {e}")))?;
         self.channels.remove(&name);
         Ok(())
     }
