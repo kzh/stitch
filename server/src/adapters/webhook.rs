@@ -37,7 +37,6 @@ const HEADER_TIMESTAMP: &str = "Twitch-Eventsub-Message-Timestamp";
 const HEADER_MESSAGE_ID: &str = "Twitch-Eventsub-Message-Id";
 const HEADER_MESSAGE_TYPE: &str = "Twitch-Eventsub-Message-Type";
 
-const STREAM_FETCH_RETRIES: i32 = 3;
 const CONCURRENCY_LIMIT: usize = 40;
 
 #[derive(thiserror::Error, Debug)]
@@ -104,10 +103,9 @@ struct ChallengePayload {
 
 #[derive(Deserialize, Debug)]
 pub struct OnlineEvent {
+    pub id: String,
     pub broadcaster_user_id: String,
     pub broadcaster_user_name: String,
-    pub category_id: Option<String>,
-    pub category_name: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -166,7 +164,7 @@ pub struct TwitchWebhook {
 }
 
 impl TwitchWebhook {
-    pub async fn new(
+    pub(crate) async fn new(
         secret: String,
         port: u16,
         api: Arc<super::twitch::TwitchAPI>,
@@ -193,7 +191,7 @@ impl TwitchWebhook {
 
     pub(crate) async fn track_channel(&self, user_id: &str, channel: db::Channel) -> Result<()> {
         self.channels.insert(channel.channel_id.clone(), channel);
-        if let Ok(stream) = self.api.get_stream(user_id, 0).await {
+        if let Ok(stream) = self.api.get_stream(user_id, false).await {
             self.handle_stream_online(
                 user_id.to_string(),
                 Some(stream.clone()),
@@ -405,7 +403,7 @@ impl TwitchWebhook {
             None => {
                 let results = tokio::join!(
                     self.api.get_channel(&user_id),
-                    self.api.get_stream(&user_id, STREAM_FETCH_RETRIES)
+                    self.api.get_stream(&user_id, true)
                 );
                 let (channel, stream) = match results {
                     (Err(e), _) => {
