@@ -411,7 +411,13 @@ impl TwitchWebhook {
                             "Twitch API error: {e:#}"
                         )));
                     }
-                    (_, Err(_)) => return Ok(()),
+                    (_, Err(e)) => {
+                        warn!(
+                            "Stream online received for user {} but no stream found: {e:#}",
+                            user_id
+                        );
+                        return Ok(());
+                    }
                     (Ok(channel), Ok(stream)) => (channel, stream),
                 };
 

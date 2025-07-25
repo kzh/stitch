@@ -236,6 +236,7 @@ impl TwitchAPI {
             0
         };
 
+        let mut last_error: Option<anyhow::Error> = None;
         for attempt in 0..=attempts {
             match self
                 .send_json::<StreamsResponse>(
@@ -248,9 +249,17 @@ impl TwitchAPI {
                 Ok(resp) => {
                     if let Some(stream) = resp.data.into_iter().next() {
                         return Ok(stream);
+                    } else if attempt == attempts {
+                        last_error =
+                            Some(anyhow::anyhow!("No stream found for user_id: {}", user_id));
                     }
                 }
-                Err(_) => {}
+                Err(e) => {
+                    tracing::error!("Error fetching stream: {e:?}");
+                    if attempt == attempts {
+                        last_error = Some(e);
+                    }
+                }
             }
 
             if attempt < attempts {
@@ -259,7 +268,10 @@ impl TwitchAPI {
             }
         }
 
-        anyhow::bail!("Failed to fetch stream after {} retries", attempts);
+        anyhow::bail!(
+            "Failed to fetch stream after {} retries: {last_error:?}",
+            attempts
+        );
     }
 
     #[instrument(skip(self))]
