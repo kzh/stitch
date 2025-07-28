@@ -21,7 +21,7 @@ use serenity::{
     model::{colour, id::ChannelId},
 };
 use sha2::Sha256;
-use std::{collections::hash_map::RandomState, future::Future};
+use std::{cmp::Reverse, collections::hash_map::RandomState, future::Future};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tracing::{error, info, instrument, warn};
@@ -544,7 +544,17 @@ impl TwitchWebhook {
         events.sort_by_key(|e| e.timestamp);
 
         let (title, categories) = tally_categories(&events);
-        let category = categories.iter().max_by_key(|(_, count)| *count).unwrap().0;
+
+        let mut most: Vec<_> = categories.into_iter().collect();
+        most.sort_by_key(|(_, count)| Reverse(*count));
+        let category = format!(
+            "**»** {}",
+            most.into_iter()
+                .take(3)
+                .map(|e| e.0)
+                .collect::<Vec<_>>()
+                .join(" ⬩ ")
+        );
 
         let elapsed = human_duration(stream.started_at, timestamp);
 
@@ -559,7 +569,7 @@ impl TwitchWebhook {
                 .thumbnail(stream.profile_image_url.clone())
                 .color(colour::Color::from_rgb(128, 128, 128))
                 .url(format!("https://twitch.tv/{}", stream.user_login))
-                .field(format!("**»** {category}"), "", true),
+                .field(category, "", true),
         );
         self.edit_discord(stream.message_id, builder).await?;
 
