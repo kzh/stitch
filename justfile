@@ -6,7 +6,7 @@ default:
 
 # Build the server (release)
 build-server:
-    cargo build --package server --release
+    cargo build --package stitch --release
 
 # Build the client (release)
 build-client:

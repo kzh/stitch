@@ -24,7 +24,8 @@ RUN apt-get update && \
 COPY --from=tools /usr/local/cargo/bin/ /usr/local/cargo/bin/
 ENV RUSTC_WRAPPER=sccache \
     CARGO_PROFILE_RELEASE_STRIP=symbols \
-    SCCACHE_DIR=/sccache
+    SCCACHE_DIR=/sccache \
+    RUSTFLAGS="--cfg tokio_unstable"
 
 ###############################################################################
 # 1. Planner – compute dependency graph

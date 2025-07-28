@@ -6,7 +6,7 @@ use futures::future::try_join_all;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
-use tracing::{debug, info, instrument, warn};
+use tracing::{info, instrument};
 
 const TWITCH_OAUTH_URL: &str = "https://id.twitch.tv/oauth2/token";
 const TWITCH_HELIX_USERS_URL: &str = "https://api.twitch.tv/helix/users";
