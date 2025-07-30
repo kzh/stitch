@@ -21,6 +21,8 @@ config:
   discord:
     token: ""
     channel: ""
+  tokioConsole:
+    port: "50053"
 
 # Ingress configuration
 ingress:

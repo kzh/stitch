@@ -7,6 +7,7 @@ metadata:
 data:
   SERVER_PORT: {{ .Values.config.server.port | quote }}
   WEBHOOK_PORT: {{ .Values.config.webhook.port | quote }}
+  TOKIO_CONSOLE_PORT: {{ .Values.config.tokioConsole.port | quote }}
   WEBHOOK_URL: {{ .Values.config.webhook.url | quote }}
   DATABASE_URL: {{ include "stitch.databaseUrl" . | quote }}
   RUST_LOG: {{ .Values.logLevel | quote }}

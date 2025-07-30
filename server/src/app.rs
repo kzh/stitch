@@ -23,6 +23,7 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
         webhook_url,
         webhook_secret,
         webhook_port,
+        tokio_console_port,
         port,
     } = config;
 

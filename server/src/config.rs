@@ -19,8 +19,11 @@ pub struct ServerConfig {
     #[arg(long, env)]
     pub webhook_secret: String,
 
-    #[arg(long, env)]
+    #[arg(long, env, default_value_t = 50052)]
     pub webhook_port: u16,
+
+    #[arg(long, env, default_value_t = 50053)]
+    pub tokio_console_port: u16,
 
     #[arg(long, env)]
     pub twitch_client_id: String,

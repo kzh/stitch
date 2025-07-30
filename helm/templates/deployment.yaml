@@ -34,6 +34,9 @@ spec:
             - name: webhook
               containerPort: {{ .Values.config.webhook.port }}
               protocol: TCP
+            - name: tokio-console
+              containerPort: {{ .Values.config.tokioConsole.port }}
+              protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

@@ -19,5 +19,9 @@ spec:
       targetPort: webhook
       protocol: TCP
       name: webhook
+    - port: {{ .Values.config.tokioConsole.port }}
+      targetPort: tokio-console
+      protocol: TCP
+      name: tokio-console
   selector:
     {{- include "stitch.selectorLabels" . | nindent 4 }}
