@@ -53,14 +53,14 @@ COPY --from=cacher /usr/local/cargo /usr/local/cargo
 COPY --from=cacher /app/target /app/target
 COPY . .
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    cargo build --release --bin stitch --locked -j $(nproc)
+    cargo build --release --bin stitch-server --locked -j $(nproc)
 
 ###############################################################################
 # 4. Runtime – tiny, non-root distroless image
 ###############################################################################
 FROM gcr.io/distroless/cc:nonroot
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /app/target/release/stitch /stitch
+COPY --from=builder /app/target/release/stitch-server /stitch-server
 LABEL org.opencontainers.image.source="https://github.com/kzh/stitch"
 EXPOSE 50051 50052
-ENTRYPOINT ["/stitch"]
+ENTRYPOINT ["/stitch-server"]

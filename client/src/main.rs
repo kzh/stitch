@@ -33,7 +33,7 @@ enum Command {
 }
 
 #[derive(Parser)]
-#[command(name = "stitch-cli", version, about)]
+#[command(name = "stitch", version, about)]
 struct Cli {
     #[arg(long, default_value = "http://127.0.0.1:50051")]
     server: String,

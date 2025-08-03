@@ -6,19 +6,19 @@ default:
 
 # Build the server (release)
 build-server:
-    cargo build --package stitch --release
+    cargo build --package stitch-server --release
 
 # Build the client (release)
 build-client:
-    cargo build --package client --release
+    cargo build --package stitch --release
 
 # Run the server (debug)
 run-server:
-    RUST_BACKTRACE=1 cargo run --package stitch
+    RUST_BACKTRACE=1 cargo run --package stitch-server
 
 # Run the client (debug)
 run-client:
-    RUST_BACKTRACE=1 cargo run --package client
+    RUST_BACKTRACE=1 cargo run --package stitch
 
 
 # Build Docker image
