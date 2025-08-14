@@ -43,6 +43,8 @@ const CONCURRENCY_LIMIT: usize = 40;
 pub enum WebhookError {
     #[error("Verification failed: {0}")]
     VerificationFailed(String),
+    #[error("Duplicate message ID: {0}")]
+    DuplicateMessageId(String),
     #[error("Bad payload: {0}")]
     BadPayload(String),
     #[error("Missing header: {0}")]
@@ -61,10 +63,11 @@ impl WebhookError {
     fn status(&self) -> StatusCode {
         use WebhookError::*;
         match self {
-            VerificationFailed(_) => StatusCode::UNAUTHORIZED,
+            VerificationFailed(_) => StatusCode::FORBIDDEN,
             BadPayload(_) | MissingHeader(_) | InvalidHeaderValue(_, _) | UnknownMessageType(_) => {
                 StatusCode::BAD_REQUEST
             }
+            DuplicateMessageId(_) => StatusCode::NO_CONTENT,
             InternalServerError(_) | DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -82,6 +85,9 @@ impl IntoResponse for WebhookError {
         let body = match self {
             WebhookError::InternalServerError(_) | WebhookError::DatabaseError(_) => {
                 "Internal Server Error".to_string()
+            }
+            WebhookError::DuplicateMessageId(_) | WebhookError::VerificationFailed(_) => {
+                "".to_string()
             }
             _ => self.to_string(),
         };
@@ -271,7 +277,7 @@ impl TwitchWebhook {
         Ok((signature, timestamp, message_id))
     }
 
-    #[instrument(skip(self, headers, body), err(Debug))]
+    #[instrument(skip(self, headers, body))]
     fn verify(&self, headers: &HeaderMap, body: &[u8]) -> Result<DateTime<Utc>> {
         let (raw_signature, timestamp_str, message_id) = self.signature_headers(headers)?;
 
@@ -279,9 +285,7 @@ impl TwitchWebhook {
             .recent_messages
             .insert(message_id, tokio::time::Duration::from_secs(10 * 60))
         {
-            return Err(WebhookError::VerificationFailed(format!(
-                "Duplicate message ID: {message_id}"
-            )));
+            return Err(WebhookError::DuplicateMessageId(message_id.to_string()));
         }
 
         let timestamp = DateTime::parse_from_rfc3339(timestamp_str)
