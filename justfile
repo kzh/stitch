@@ -12,6 +12,10 @@ build-server:
 build-client:
     cargo build --package stitch --release
 
+# Install the client with cargo install
+install-client:
+    cargo install --path client
+
 # Run the server (debug)
 run-server:
     RUST_BACKTRACE=1 cargo run --package stitch-server

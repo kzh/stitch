@@ -6,17 +6,17 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.98"
 axum = "0.8.4"
-chrono = { version = "0.4.38", features = ["serde"] }
+chrono = { version = "0.4.41", features = ["serde"] }
 clap = { workspace = true }
 dashmap = "6.1.0"
 dotenv = "0.15.0"
 hmac = "0.12.1"
 hex = "0.4.3"
-reqwest = { version = "0.12.9", features = ["json"] }
+reqwest = { version = "0.12.22", features = ["json"] }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-sha2 = "0.10.8"
-sqlx = { version = "0.8.2", features = [
+serde_json = "1.0.142"
+sha2 = "0.10.9"
+sqlx = { version = "0.8.6", features = [
     "runtime-tokio-native-tls",
     "json",
     "postgres",
@@ -24,7 +24,7 @@ sqlx = { version = "0.8.2", features = [
     "chrono",
 ] }
 proto = { path = "../proto" }
-tokio = { version = "1.45.1", features = [
+tokio = { version = "1.47.1", features = [
     "macros",
     "rt",
     "rt-multi-thread",
@@ -37,8 +37,8 @@ tracing-subscriber = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 tonic = { workspace = true }
-serenity = { version = "0.12.3", features = ["client"] }
+serenity = { version = "0.12.4", features = ["client"] }
 futures = "0.3.31"
 thiserror = "2.0.12"
-tokio-util = "0.7.15"
+tokio-util = "0.7.16"
 console-subscriber = "0.4.1"

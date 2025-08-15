@@ -1,0 +1,17 @@
+# Stitch CLI Configuration Example
+# Copy this file to ~/.config/stitch/config.toml and customize
+
+# Server configuration
+server = "http://127.0.0.1:50051"  # Can also use STITCH_SERVER env var
+
+# Default output format: json or table
+output_format = "table"
+
+# Enable colored output
+color = true
+
+# Request timeout in seconds
+timeout = 30
+
+# Number of retry attempts for failed requests
+retries = 3

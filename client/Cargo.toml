@@ -8,9 +8,22 @@ proto = { path = "../proto" }
 tonic = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
+tracing = "0.1"
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
-tokio = { version = "1.45.1", features = ["macros", "rt", "rt-multi-thread"] }
+clap_complete = "4.5"
+tokio = { version = "1.47.1", features = ["macros", "rt", "rt-multi-thread", "signal"] }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
+serde_json = "1.0.142"
 anyhow = "1.0.98"
+owo-colors = { version = "4.2", features = ["supports-colors"] }
+tabled = "0.20"
+indicatif = "0.18"
+dirs = "6.0"
+toml = "0.9"
+human-panic = "2.0"
+unicode-width = "0.2"
+console = "0.16"
+ratatui = "0.29"
+crossterm = "0.29"
+dialoguer = "0.11"
