@@ -325,7 +325,7 @@ fn ui(f: &mut Frame, app: &App) {
         ])
         .split(f.area());
 
-    let header = Tabs::new(vec!["Channels", "Settings"])
+    let header = Tabs::new(vec![Line::from("Channels"), Line::from("Settings")])
         .block(Block::default().borders(Borders::ALL).title(" Stitch TUI "))
         .select(app.selected_tab)
         .style(Style::default().fg(Color::White))
@@ -426,11 +426,19 @@ fn render_channels_tab(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    let total_count = app.channels.len();
+    let filtered_count = channels.len();
+    let title_text = if app.search_query.is_empty() {
+        format!(" Channels ({}) ", total_count)
+    } else {
+        format!(" Channels ({}/{}) ", filtered_count, total_count)
+    };
+
     let channels_list = List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Channels ")
+                .title(Line::from(title_text))
                 .title_style(
                     Style::default()
                         .fg(Color::Cyan)

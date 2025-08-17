@@ -82,7 +82,7 @@ pub async fn show_welcome_animation() -> Result<(), io::Error> {
 |         S T I T C H            |
 |      Stream Manager CLI        |
 |           * * * * *            |
-|           Ready! :)            |
+|            Ready :)            |
 +================================+"#;
     term.clear_screen()?;
 
