@@ -3,10 +3,11 @@ use crate::adapters::twitch::TwitchStream;
 use crate::utils::ttl_set;
 use axum::{
     body::Bytes,
-    extract::State,
+    error_handling::HandleErrorLayer,
+    extract::{DefaultBodyLimit, State},
     http::{header::HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing, Router,
+    routing, BoxError, Router,
 };
 use chrono::{DateTime, Utc};
 use dashmap::{DashMap, Entry};
@@ -21,9 +22,16 @@ use serenity::{
     model::{colour, id::ChannelId},
 };
 use sha2::Sha256;
-use std::{cmp::Reverse, collections::hash_map::RandomState, future::Future};
+use std::{
+    cmp::Reverse, collections::hash_map::RandomState, future::Future, net::SocketAddr,
+    time::Duration,
+};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use tower::ServiceBuilder;
+use tower_governor::{
+    governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
+};
 use tracing::{error, info, instrument, warn};
 
 const SIGNATURE_PREFIX: &str = "sha256=";
@@ -38,6 +46,7 @@ const HEADER_MESSAGE_ID: &str = "Twitch-Eventsub-Message-Id";
 const HEADER_MESSAGE_TYPE: &str = "Twitch-Eventsub-Message-Type";
 
 const CONCURRENCY_LIMIT: usize = 40;
+const MAX_BODY_BYTES: usize = 64 * 1024;
 
 #[derive(thiserror::Error, Debug)]
 pub enum WebhookError {
@@ -677,10 +686,44 @@ impl TwitchWebhook {
     where
         F: Future<Output = ()> + Send + 'static,
     {
+        let governor_config = GovernorConfigBuilder::default()
+            .per_second(50)
+            .burst_size(100)
+            .use_headers()
+            .key_extractor(SmartIpKeyExtractor)
+            .finish()
+            .unwrap();
+        let limiter = governor_config.limiter().clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                limiter.retain_recent();
+                limiter.shrink_to_fit();
+            }
+        });
+
+        let governor_layer = GovernorLayer::new(governor_config)
+            .error_handler(|_| StatusCode::TOO_MANY_REQUESTS.into_response());
+
         let port = self.port;
         let app = Router::new()
             .route("/webhook/twitch", routing::post(handle_message))
-            .with_state(Arc::clone(&self));
+            .with_state(Arc::clone(&self))
+            .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+            .route_layer(governor_layer)
+            .layer(
+                ServiceBuilder::new()
+                    .layer(HandleErrorLayer::new(|err: BoxError| async move {
+                        if err.is::<tower::timeout::error::Elapsed>() {
+                            StatusCode::REQUEST_TIMEOUT
+                        } else {
+                            StatusCode::INTERNAL_SERVER_ERROR
+                        }
+                    }))
+                    .load_shed()
+                    .concurrency_limit(200)
+                    .timeout(Duration::from_secs(10)),
+            );
 
         let listener =
             tokio::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
@@ -695,9 +738,12 @@ impl TwitchWebhook {
             .await?;
 
         info!("Stitch webhook server listening: 0.0.0.0:{}", port);
-        axum::serve(listener, app.into_make_service())
-            .with_graceful_shutdown(shutdown)
-            .await?;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown)
+        .await?;
         let mut tasks = self.tasks.lock().await;
         while let Some(result) = tasks.join_next().await {
             result.unwrap_or_else(|e| error!("Task failed: {e:?}"));
@@ -818,31 +864,31 @@ mod tests {
         // Test 3: Multiple categories
         let events = vec![
             db::UpdateEvent {
-                title: "Playing Minecraft".to_string(),
-                category: "Minecraft".to_string(),
+                title: "Playing Game A".to_string(),
+                category: "Game A".to_string(),
                 timestamp: base_time,
             },
             db::UpdateEvent {
                 title: "Still Playing".to_string(),
-                category: "Minecraft".to_string(),
+                category: "Game A".to_string(),
                 timestamp: base_time + chrono::Duration::hours(1) + chrono::Duration::minutes(30),
             },
             db::UpdateEvent {
                 title: "Just Chatting".to_string(),
-                category: "Just Chatting".to_string(),
+                category: "Game B".to_string(),
                 timestamp: base_time + chrono::Duration::hours(4),
             },
             db::UpdateEvent {
-                title: "Playing Fortnite".to_string(),
-                category: "Fortnite".to_string(),
+                title: "Playing Game C".to_string(),
+                category: "Game C".to_string(),
                 timestamp: base_time + chrono::Duration::hours(4) + chrono::Duration::minutes(15),
             },
         ];
         let (title, categories) = tally_categories(&events);
         assert_eq!(title, "Still Playing"); // 2.5 hours
-        assert_eq!(categories.get("Minecraft"), Some(&14400)); // 4 hours
-        assert_eq!(categories.get("Just Chatting"), Some(&900)); // 15 minutes
-        assert_eq!(categories.get("Fortnite"), None); // No duration for last event
+        assert_eq!(categories.get("Game A"), Some(&14400)); // 4 hours
+        assert_eq!(categories.get("Game B"), Some(&900)); // 15 minutes
+        assert_eq!(categories.get("Game C"), None); // No duration for last event
 
         // Test 4: Equal durations
         let events = vec![
