@@ -9,7 +9,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs, Wrap},
+    widgets::{Block, Clear, Borders, List, ListItem, ListState, Paragraph, Tabs, Wrap},
     Frame, Terminal,
 };
 use std::{
@@ -520,6 +520,7 @@ fn render_settings_tab(f: &mut Frame, _app: &App, area: Rect) {
 
 fn render_help_overlay(f: &mut Frame) {
     let area = centered_rect(60, 60, f.area());
+    f.render_widget(Clear, area);
 
     let help_text = vec![
         Line::from(""),
