@@ -276,19 +276,20 @@ impl TwitchAPI {
 
     #[instrument(skip(self))]
     pub async fn get_streams(&self, user_ids: &[String]) -> anyhow::Result<Vec<TwitchStream>> {
-        let resp: StreamsResponse = self
-            .send_json(
-                self.authenticated_request(reqwest::Method::GET, TWITCH_HELIX_STREAMS_URL)
-                    .query(
-                        &user_ids
-                            .iter()
-                            .map(|id| ("user_id", id))
-                            .collect::<Vec<_>>(),
-                    ),
-                "fetch streams by user_ids",
-            )
-            .await?;
-        Ok(resp.data)
+        let mut streams: Vec<TwitchStream> = Vec::new();
+
+        for chunk in user_ids.chunks(100) {
+            let resp: StreamsResponse = self
+                .send_json(
+                    self.authenticated_request(reqwest::Method::GET, TWITCH_HELIX_STREAMS_URL)
+                        .query(&chunk.iter().map(|id| ("user_id", id)).collect::<Vec<_>>()),
+                    "fetch streams by user_ids",
+                )
+                .await?;
+            streams.extend(resp.data);
+        }
+
+        Ok(streams)
     }
 
     #[instrument(skip(self))]
